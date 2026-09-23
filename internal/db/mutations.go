@@ -452,7 +452,8 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Description *string  `json:"description"`
+		AddressRange *string  `json:"address_range"`
+		Description  *string  `json:"description"`
 		Owner       *string  `json:"owner"`
 		Account     *string  `json:"account"`
 		Service     *int64   `json:"service"`
@@ -468,7 +469,7 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		if (req.Subdivide != nil || req.ValidMasks != nil) && !hasRole(actor, "administrator") {
+		if (req.AddressRange != nil || req.Subdivide != nil || req.ValidMasks != nil) && !hasRole(actor, "administrator") {
 			return nil, problem(403, "network settings require administrator")
 		}
 		fields := []string{}
@@ -478,6 +479,127 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 			values = append(values, value)
 			fields = append(fields, fmt.Sprintf("%s=$%d", name, len(values)))
 			changes[name] = value
+		}
+		if req.AddressRange != nil {
+			requested, err := netip.ParsePrefix(strings.TrimSpace(*req.AddressRange))
+			if err != nil || requested.Addr().Is4In6() || requested != requested.Masked() {
+				return nil, problem(400, "invalid or non-canonical CIDR")
+			}
+			if requested.Addr().BitLen() != n.prefix.Addr().BitLen() {
+				return nil, problem(400, "cannot change network address family")
+			}
+			if requested != n.prefix {
+				// Child networks must remain wholly inside their parent.
+				var parentID sql.NullInt64
+				if err := tx.QueryRowContext(ctx, `SELECT parent FROM networks WHERE id=$1`, id).Scan(&parentID); err != nil {
+					return nil, err
+				}
+				if parentID.Valid {
+					parent, err := lockNetwork(ctx, tx, parentID.Int64)
+					if err != nil {
+						return nil, err
+					}
+					if !parent.prefix.Contains(requested.Addr()) || !parent.prefix.Contains(requested.Masked().Addr()) || requested.Bits() < parent.prefix.Bits() {
+						return nil, problem(409, "resized network must remain within its parent")
+					}
+					// Prefix containment can be decided from the first address plus mask length:
+					// a child prefix with at least the parent's mask and an address in the
+					// parent cannot extend beyond that parent.
+				}
+
+				// Resizing may not overlap any network outside this network's own
+				// hierarchy. Ancestors necessarily overlap a valid child prefix, and
+				// descendants are allowed because they must remain contained.
+				var overlap bool
+				if err := tx.QueryRowContext(ctx, `
+					WITH RECURSIVE descendants AS (
+						SELECT id FROM networks WHERE parent=$1
+						UNION ALL
+						SELECT n.id FROM networks n JOIN descendants d ON n.parent=d.id
+					),
+					ancestors AS (
+						SELECT parent AS id FROM networks WHERE id=$1 AND parent IS NOT NULL
+						UNION ALL
+						SELECT n.parent FROM networks n JOIN ancestors a ON n.id=a.id
+						WHERE n.parent IS NOT NULL
+					)
+					SELECT EXISTS(
+						SELECT 1 FROM networks
+						WHERE id <> $1
+						  AND id NOT IN (SELECT id FROM descendants)
+						  AND id NOT IN (SELECT id FROM ancestors)
+						  AND address_range && $2::cidr
+					)`, id, requested.String()).Scan(&overlap); err != nil {
+					return nil, err
+				}
+				if overlap {
+					return nil, problem(409, "resized network overlaps another allocation")
+				}
+
+				// Every direct child must remain contained. If direct children fit,
+				// their descendants necessarily remain contained as well.
+				var orphanChild bool
+				if err := tx.QueryRowContext(ctx,
+					`SELECT EXISTS(SELECT 1 FROM networks WHERE parent=$1 AND NOT (address_range <<= $2::cidr))`,
+					id, requested.String(),
+				).Scan(&orphanChild); err != nil {
+					return nil, err
+				}
+				if orphanChild {
+					return nil, problem(409, "resize would orphan an existing subnet allocation")
+				}
+
+				// Hosts can include legacy rows not attached to this exact network ID,
+				// so protect every host currently inside the old prefix.
+				var orphanHost bool
+				if err := tx.QueryRowContext(ctx,
+					`SELECT EXISTS(SELECT 1 FROM hosts WHERE address <<= $1::cidr AND NOT (address <<= $2::cidr))`,
+					n.prefix.String(), requested.String(),
+				).Scan(&orphanHost); err != nil {
+					return nil, err
+				}
+				if orphanHost {
+					return nil, problem(409, "resize would orphan an existing IP/description entry")
+				}
+
+				// Retained IPv4 hosts must also remain usable host addresses. A
+				// shrink can make a formerly valid host become the new network or
+				// broadcast address even though it is still inside the prefix.
+				if requested.Addr().Is4() && requested.Bits() < 31 {
+					var reservedHost bool
+					if err := tx.QueryRowContext(ctx, `
+						SELECT EXISTS(
+							SELECT 1 FROM hosts
+							WHERE address <<= $1::cidr
+							  AND (address = network($1::cidr)::inet
+							       OR address = broadcast($1::cidr)::inet)
+						)`, requested.String()).Scan(&reservedHost); err != nil {
+						return nil, err
+					}
+					if reservedHost {
+						return nil, problem(409, "resize would turn an existing host into a network or broadcast address")
+					}
+				}
+
+				// Validate the effective allocation masks against the resized prefix.
+				// If valid_masks is not part of this PATCH, preserve the stored list
+				// only when every entry remains more specific than the new network.
+				effectiveMasks := n.validMasks
+				if req.ValidMasks != nil {
+					effectiveMasks = *req.ValidMasks
+				}
+				seenMasks := map[int16]bool{}
+				for _, mask := range effectiveMasks {
+					if int(mask) <= requested.Bits() || int(mask) > requested.Addr().BitLen() || seenMasks[mask] {
+						return nil, problem(400, "allocation masks are incompatible with resized network")
+					}
+					seenMasks[mask] = true
+				}
+
+				add("address_range", requested.String())
+				fields[len(fields)-1] += "::cidr"
+				changes["address_range"] = map[string]string{"from": n.prefix.String(), "to": requested.String()}
+			}
 		}
 		if req.Description != nil {
 			add("description", *req.Description)
@@ -507,8 +629,14 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.ValidMasks != nil {
 			seen := map[int16]bool{}
+			effectivePrefix := n.prefix
+			if req.AddressRange != nil {
+				if p, err := netip.ParsePrefix(strings.TrimSpace(*req.AddressRange)); err == nil && p == p.Masked() && p.Addr().BitLen() == n.prefix.Addr().BitLen() {
+					effectivePrefix = p
+				}
+			}
 			for _, mask := range *req.ValidMasks {
-				if int(mask) <= n.prefix.Bits() || int(mask) > n.prefix.Addr().BitLen() || seen[mask] {
+				if int(mask) <= effectivePrefix.Bits() || int(mask) > effectivePrefix.Addr().BitLen() || seen[mask] {
 					return nil, problem(400, "invalid or duplicate allocation mask")
 				}
 				seen[mask] = true

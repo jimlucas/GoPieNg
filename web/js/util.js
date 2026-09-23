@@ -88,7 +88,7 @@ export function showWarningModal(msg) {
   overlay.addEventListener('click', dismiss)
 }
 
-export function showConfirmModal(msg) {
+export function showConfirmModal(msg, confirmLabel = 'Delete') {
   return new Promise((resolve) => {
     const overlay = document.createElement('div')
     overlay.className = 'warning-modal-overlay'
@@ -107,7 +107,7 @@ export function showConfirmModal(msg) {
     
     const okBtn = document.createElement('button')
     okBtn.className = 'confirm-ok'
-    okBtn.textContent = 'Delete'
+    okBtn.textContent = confirmLabel
     okBtn.onclick = () => {
       overlay.remove()
       resolve(true)
