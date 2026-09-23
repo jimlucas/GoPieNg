@@ -584,7 +584,10 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 				// Validate the effective allocation masks against the resized prefix.
 				// If valid_masks is not part of this PATCH, preserve the stored list
 				// only when every entry remains more specific than the new network.
-				effectiveMasks := n.validMasks
+				effectiveMasks := make([]int16, len(n.masks))
+				for i, mask := range n.masks {
+					effectiveMasks[i] = int16(mask)
+				}
 				if req.ValidMasks != nil {
 					effectiveMasks = *req.ValidMasks
 				}
