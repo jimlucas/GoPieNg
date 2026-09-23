@@ -323,7 +323,8 @@ function TreeNode(net, depth){
       }
       try {
         const confirmed = await showConfirmModal(
-          `Resize network ${net.address_range} to ${nextCIDR}? Existing hosts and child networks must remain inside the new range, and expansion cannot overlap another allocation.`
+          `Resize network ${net.address_range} to ${nextCIDR}? Existing hosts and child networks must remain inside the new range, and expansion cannot overlap another allocation.`,
+          'Resize'
         )
         if (!confirmed) {
           cancelCIDREdit()
