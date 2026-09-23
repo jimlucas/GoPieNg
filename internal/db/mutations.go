@@ -293,6 +293,76 @@ func childPrefixes(ctx context.Context, tx *sql.Tx, id int64) ([]string, error) 
 	return children, rows.Err()
 }
 
+func (m mutations) createNetwork(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CIDR        string `json:"cidr"`
+		Description string `json:"description"`
+		Subdivide   bool   `json:"subdivide"`
+	}
+	if !decodeRequest(w, r, &req) {
+		return
+	}
+
+	requested, err := netip.ParsePrefix(req.CIDR)
+	if err != nil || requested.Addr().Is4In6() || requested != requested.Masked() {
+		respondError(w, problem(400, "invalid or non-canonical CIDR"))
+		return
+	}
+	if req.Description == "" {
+		req.Description = "manual"
+	}
+
+	m.write(w, r, "creator", func(tx *sql.Tx, actor *auth.Claims) (any, error) {
+		ctx := r.Context()
+		cidr := requested.String()
+
+		// A top-level network must be independent of every existing allocation.
+		// Check the full network table rather than only other roots so legacy or
+		// malformed hierarchy data cannot be hidden beneath a new root.
+		var overlap bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM networks WHERE address_range && $1::cidr)`,
+			cidr,
+		).Scan(&overlap); err != nil {
+			return nil, err
+		}
+		if overlap {
+			return nil, problem(409, "network overlaps with existing allocation")
+		}
+
+		// Legacy databases can contain hosts whose address no longer belongs to
+		// the network referenced by hosts.network. Such rows are still allocated:
+		// hosts.address is globally unique, and creating a new root around one
+		// would make the address appear free in that root even though it cannot be
+		// allocated. Protect those misplaced legacy hosts explicitly.
+		var occupied bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM hosts WHERE address <<= $1::cidr)`,
+			cidr,
+		).Scan(&occupied); err != nil {
+			return nil, err
+		}
+		if occupied {
+			return nil, problem(409, "network contains existing host allocations")
+		}
+
+		var nid int64
+		if err := tx.QueryRowContext(ctx,
+			`INSERT INTO networks(parent,address_range,description,subdivide) VALUES(NULL,$1::cidr,$2,$3) RETURNING id`,
+			cidr, req.Description, req.Subdivide,
+		).Scan(&nid); err != nil {
+			return nil, err
+		}
+		if err := audit(ctx, tx, actor, cidr, "top-level network created", req.Description); err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"id": nid, "parent": nil, "address_range": cidr,
+			"description": req.Description, "subdivide": req.Subdivide,
+		}, nil
+	})
+}
+
 func (m mutations) allocateSubnet(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
