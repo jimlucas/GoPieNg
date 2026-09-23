@@ -592,6 +592,33 @@ function TreeNode(net, depth){
     actions.appendChild(settingsBtn)
   }
 
+  // Child networks are allocations from their parent. Creators/admins may
+  // return an empty allocation to the parent's free pool.
+  if (net.parent != null && isCreator()) {
+    const removeBtn = el('button', { class: 'btn-action btn-delete', title: 'Remove subnet allocation' }, '×')
+    removeBtn.onclick = async (e) => {
+      e.stopPropagation()
+      const confirmed = await showConfirmModal(
+        `Remove subnet allocation ${net.address_range}? This is only allowed when it contains no child subnets or host/IP entries.`
+      )
+      if (!confirmed) return
+
+      removeBtn.disabled = true
+      try {
+        await api.deleteNetwork(net.id)
+        expanded.delete(net.id)
+        store.networks = store.networks.filter(n => n.id !== net.id)
+        if (window.syncLastChange) window.syncLastChange()
+        pushToast(`Removed subnet allocation ${net.address_range}`, 'info')
+        store.set({})
+      } catch(e) {
+        pushToast('Remove failed: ' + e.message, 'error')
+        removeBtn.disabled = false
+      }
+    }
+    actions.appendChild(removeBtn)
+  }
+
   if (isSubdivide) {
     const openBtn = el('button', { class: 'btn-action btn-open' }, isExpanded ? 'close' : 'open')
     openBtn.onclick = async (e) => {

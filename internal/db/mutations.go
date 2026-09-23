@@ -670,10 +670,29 @@ func (m mutations) deleteNetwork(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err = tx.ExecContext(r.Context(), `DELETE FROM networks WHERE id=$1`, id); err != nil {
+		ctx := r.Context()
+		var childCount, hostCount int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM networks WHERE parent=$1`, id).Scan(&childCount); err != nil {
 			return nil, err
 		}
-		if err = audit(r.Context(), tx, actor, n.prefix.String(), "network deleted", nil); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM hosts WHERE network=$1`, id).Scan(&hostCount); err != nil {
+			return nil, err
+		}
+		if childCount > 0 || hostCount > 0 {
+			return nil, problem(409, fmt.Sprintf("cannot remove subnet allocation: %d child subnet(s) and %d host/IP entry(s) still exist", childCount, hostCount))
+		}
+		var parentID sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT parent FROM networks WHERE id=$1`, id).Scan(&parentID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM networks WHERE id=$1`, id); err != nil {
+			return nil, err
+		}
+		auditAction := "network deleted"
+		if parentID.Valid {
+			auditAction = "subnet allocation removed"
+		}
+		if err = audit(ctx, tx, actor, n.prefix.String(), auditAction, nil); err != nil {
 			return nil, err
 		}
 		return map[string]any{"status": "ok"}, nil
