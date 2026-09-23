@@ -132,7 +132,7 @@ daemon_flags="-d -no-static -socket /var/www/run/gopieng.sock"
 . /etc/rc.d/rc.subr
 
 rc_reload=NO
-rc_bg=NO
+rc_bg=YES
 
 rc_cmd $1
 ```
@@ -224,25 +224,72 @@ Then open the configured hostname in a browser and verify that the GoPieNg login
 
 ## 11. Create the first administrator
 
-The schema creates the roles but does not create a default administrator account. Create or migrate a user with a GoPieNg-compatible password hash, then grant the administrator role:
+The schema creates the roles but does not create a default administrator account. For a fresh installation, generate the initial password hash with GoPieNg's own `auth.HashPassword` implementation.
 
-```sql
+Create a temporary helper inside the checked-out module so Go permits it to import the project's `internal/auth` package:
+
+```sh
+doas mkdir -p /usr/local/src/GoPieNg/cmd/bootstrap-admin
+doas tee /usr/local/src/GoPieNg/cmd/bootstrap-admin/main.go >/dev/null <<'EOF'
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/yellowman/GoPieNg/internal/auth"
+)
+
+func main() {
+    if len(os.Args) != 2 {
+        log.Fatal("usage: bootstrap PASSWORD")
+    }
+    hash, err := auth.HashPassword(os.Args[1])
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(hash)
+}
+EOF
+```
+
+Generate the hash and immediately remove the helper:
+
+```sh
+read -s ADMIN_PASSWORD?'Initial admin password: '; echo
+ADMIN_HASH=$(cd /usr/local/src/GoPieNg && doas go run ./cmd/bootstrap-admin "$ADMIN_PASSWORD")
+unset ADMIN_PASSWORD
+doas rm -rf /usr/local/src/GoPieNg/cmd/bootstrap-admin
+```
+
+Insert the user and grant the administrator role:
+
+```sh
+psql 'postgres://pieng:CHANGE_ME_DATABASE_PASSWORD@127.0.0.1:5432/pieng?sslmode=disable' \
+  --set=admin_hash="$ADMIN_HASH" <<'SQL'
+INSERT INTO users (username, password, status)
+VALUES ('admin', :'admin_hash', 1)
+ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password, status = 1;
+
 INSERT INTO user_roles ("user", role)
 SELECT u.id, r.id
 FROM users u, roles r
 WHERE u.username = 'admin'
   AND r.name = 'administrator'
 ON CONFLICT DO NOTHING;
+SQL
+unset ADMIN_HASH
 ```
 
-Do not store a plaintext password in `users.password`. Current GoPieNg passwords use Argon2id PHC strings; supported legacy hashes can be upgraded after a successful login.
+Do not store a plaintext password in `users.password`. If you are migrating an existing PieNg database, supported legacy hashes can instead be retained and are upgraded after a successful login.
 
 ## 12. Updating GoPieNg
 
 Back up PostgreSQL first:
 
 ```sh
-doas -u _postgresql pg_dump -Fc pieng > /var/backups/pieng-$(date +%F).dump
+doas sh -c 'doas -u _postgresql pg_dump -Fc pieng > /var/backups/pieng-$(date +%F).dump'
 ```
 
 Then update and rebuild:
