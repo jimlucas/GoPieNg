@@ -132,15 +132,25 @@ function NetworkTree(){
 
       addBtn.disabled = true
       try {
-        await api.createNetwork(cidr, descInput.value.trim(), typeSelect.value === 'subdivide')
-        const list = await api.networks()
+        const created = await api.createNetwork(cidr, descInput.value.trim(), typeSelect.value === 'subdivide')
         cidrInput.value = ''
         descInput.value = ''
         typeSelect.value = 'subdivide'
         addDetails.open = false
         if (window.syncLastChange) window.syncLastChange()
-        store.set({ networks: Array.isArray(list) ? list : [] })
+
+        // The POST is committed before this refresh. Add its response to the
+        // store immediately so a transient GET failure cannot be mistaken for
+        // a failed creation or encourage a duplicate retry.
+        store.set({ networks: [...store.networks, created] })
         pushToast('Network created', 'info')
+
+        try {
+          const list = await api.networks()
+          store.set({ networks: Array.isArray(list) ? list : store.networks })
+        } catch(e) {
+          pushToast('Network created, but refresh failed: ' + e.message, 'error')
+        }
       } catch(e) {
         pushToast('Failed: ' + e.message, 'error')
       } finally {
