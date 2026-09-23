@@ -514,10 +514,12 @@ function TreeNode(net, depth){
   // Actions - flush right
   const actions = el('div', { class: 'tree-actions' })
 
-  // Settings button for admins (subdivide networks only)
-  if (isSubdivide && isAdmin()) {
+  // Network settings are available to admins even before a network has
+  // child allocations. This allows an empty leaf network to be enabled for
+  // subdivision and configured before its first child subnet is created.
+  if (isAdmin()) {
     const settingsBtn = el('button', { class: 'btn-action btn-settings' }, '⚙')
-    settingsBtn.title = 'Edit allocation sizes'
+    settingsBtn.title = 'Edit network settings'
     settingsBtn.onclick = (e) => {
       e.stopPropagation()
       showNetworkSettings(net, wrapper)
@@ -893,8 +895,15 @@ function showNetworkSettings(net, wrapper){
   panel.appendChild(header)
 
   const help = el('div', { class: 'settings-help sub' })
-  help.textContent = 'Select which subnet sizes can be allocated. Checked = allowed.'
+  help.textContent = 'Enable subdivision and select which subnet sizes can be allocated.'
   panel.appendChild(help)
+
+  const subdivideLabel = el('label', { class: 'mask-option' })
+  const subdivideCheckbox = el('input', { type: 'checkbox' })
+  subdivideCheckbox.checked = !!net.subdivide
+  subdivideLabel.appendChild(subdivideCheckbox)
+  subdivideLabel.appendChild(document.createTextNode(' Allow this network to be subdivided'))
+  panel.appendChild(subdivideLabel)
 
   const grid = el('div', { class: 'mask-grid' })
 
@@ -945,10 +954,14 @@ function showNetworkSettings(net, wrapper){
   saveBtn.onclick = async () => {
     const selected = checkboxes.filter(cb => cb.checked).map(cb => parseInt(cb.value))
     try {
-      await api.updateNetwork(net.id, { valid_masks: selected })
+      await api.updateNetwork(net.id, {
+        subdivide: subdivideCheckbox.checked,
+        valid_masks: selected
+      })
+      net.subdivide = subdivideCheckbox.checked
       net.valid_masks = selected
       if (window.syncLastChange) window.syncLastChange()
-      pushToast('Saved allocation sizes', 'info')
+      pushToast('Saved network settings', 'info')
       panel.remove()
       store.set({}) // Refresh to show new options
     } catch(e) {
