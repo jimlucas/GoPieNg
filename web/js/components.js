@@ -290,8 +290,72 @@ function TreeNode(net, depth){
   // Click handler set after actions are created
   row.appendChild(toggle)
 
-  // CIDR
-  row.appendChild(el('span', { class: 'tree-cidr' }, net.address_range || '?'))
+  // CIDR - administrators can resize an existing network in place.
+  const cidrWrap = el('span', { class: 'tree-cidr' })
+  const cidrSpan = el('span', { class: 'cidr-text' }, net.address_range || '?')
+  if (isAdmin()) {
+    cidrSpan.title = 'Click to resize network'
+    const cidrInput = el('input', {
+      type: 'text',
+      class: 'cidr-edit hidden',
+      value: net.address_range || ''
+    })
+
+    cidrSpan.onclick = (e) => {
+      e.stopPropagation()
+      cidrSpan.classList.add('hidden')
+      cidrInput.classList.remove('hidden')
+      cidrInput.focus()
+      cidrInput.select()
+    }
+
+    const cancelCIDREdit = () => {
+      cidrInput.value = net.address_range || ''
+      cidrSpan.classList.remove('hidden')
+      cidrInput.classList.add('hidden')
+    }
+
+    cidrInput.onblur = async () => {
+      const nextCIDR = cidrInput.value.trim()
+      if (!nextCIDR || nextCIDR === net.address_range) {
+        cancelCIDREdit()
+        return
+      }
+      try {
+        const confirmed = await showConfirmModal(
+          `Resize network ${net.address_range} to ${nextCIDR}? Existing hosts and child networks must remain inside the new range, and expansion cannot overlap another allocation.`
+        )
+        if (!confirmed) {
+          cancelCIDREdit()
+          return
+        }
+        await api.updateNetwork(net.id, { address_range: nextCIDR })
+        net.address_range = nextCIDR
+        cidrSpan.textContent = nextCIDR
+        cidrInput.value = nextCIDR
+        if (window.syncLastChange) window.syncLastChange()
+        pushToast('Network resized', 'info')
+        store.set({})
+      } catch(e) {
+        pushToast('Resize failed: ' + e.message, 'error')
+        cidrInput.value = net.address_range || ''
+      }
+      cidrSpan.classList.remove('hidden')
+      cidrInput.classList.add('hidden')
+    }
+
+    cidrInput.onkeydown = (e) => {
+      e.stopPropagation()
+      if (e.key === 'Enter') cidrInput.blur()
+      if (e.key === 'Escape') cancelCIDREdit()
+    }
+
+    cidrWrap.appendChild(cidrSpan)
+    cidrWrap.appendChild(cidrInput)
+  } else {
+    cidrWrap.appendChild(cidrSpan)
+  }
+  row.appendChild(cidrWrap)
 
   // Description - editable for editors
   const descWrap = el('span', { class: 'tree-desc' })
