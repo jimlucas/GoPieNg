@@ -330,6 +330,22 @@ func (m mutations) createNetwork(w http.ResponseWriter, r *http.Request) {
 			return nil, problem(409, "network overlaps with existing allocation")
 		}
 
+		// Legacy databases can contain hosts whose address no longer belongs to
+		// the network referenced by hosts.network. Such rows are still allocated:
+		// hosts.address is globally unique, and creating a new root around one
+		// would make the address appear free in that root even though it cannot be
+		// allocated. Protect those misplaced legacy hosts explicitly.
+		var occupied bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM hosts WHERE address <<= $1::cidr)`,
+			cidr,
+		).Scan(&occupied); err != nil {
+			return nil, err
+		}
+		if occupied {
+			return nil, problem(409, "network contains existing host allocations")
+		}
+
 		var nid int64
 		if err := tx.QueryRowContext(ctx,
 			`INSERT INTO networks(parent,address_range,description,subdivide) VALUES(NULL,$1::cidr,$2,$3) RETURNING id`,
