@@ -178,22 +178,67 @@ Configure TLS before exposing the installation to untrusted networks. Your norma
 
 ## 8. Create the first administrator
 
-GoPieNg does not create a default administrator account in `schema.sql`. Create the initial user directly in PostgreSQL using a password hash compatible with GoPieNg, or migrate an existing PieNg user.
+GoPieNg does not create a default administrator account in `schema.sql`. For a fresh installation, generate a password hash with GoPieNg's own `auth.HashPassword` implementation, then insert the user and administrator role.
 
-The recommended method is to use GoPieNg's current Argon2id password format. If you are migrating an existing database, supported legacy password hashes are upgraded after a successful login.
+Create a temporary bootstrap program outside the repository:
 
-After the user exists, grant the administrator role:
+```sh
+mkdir -p /tmp/gopieng-bootstrap
+cat >/tmp/gopieng-bootstrap/main.go <<'EOF'
+package main
 
-```sql
+import (
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/yellowman/GoPieNg/internal/auth"
+)
+
+func main() {
+    if len(os.Args) != 2 {
+        log.Fatal("usage: bootstrap PASSWORD")
+    }
+    hash, err := auth.HashPassword(os.Args[1])
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(hash)
+}
+EOF
+```
+
+Because Go's `internal` package rules require the helper to be inside the module tree, copy it temporarily into the checked-out source, run it, and remove it immediately:
+
+```sh
+sudo mkdir -p /opt/gopieng/cmd/bootstrap-admin
+sudo cp /tmp/gopieng-bootstrap/main.go /opt/gopieng/cmd/bootstrap-admin/main.go
+read -rsp 'Initial admin password: ' ADMIN_PASSWORD; echo
+ADMIN_HASH=$(cd /opt/gopieng && sudo go run ./cmd/bootstrap-admin "$ADMIN_PASSWORD")
+unset ADMIN_PASSWORD
+sudo rm -rf /opt/gopieng/cmd/bootstrap-admin /tmp/gopieng-bootstrap
+```
+
+Insert the administrator account using the generated Argon2id PHC hash. The `psql` variable syntax keeps the hash out of the SQL text:
+
+```sh
+psql 'postgres://pieng:CHANGE_ME_DATABASE_PASSWORD@127.0.0.1:5432/pieng?sslmode=disable' \
+  --set=admin_hash="$ADMIN_HASH" <<'SQL'
+INSERT INTO users (username, password, status)
+VALUES ('admin', :'admin_hash', 1)
+ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password, status = 1;
+
 INSERT INTO user_roles ("user", role)
 SELECT u.id, r.id
 FROM users u, roles r
 WHERE u.username = 'admin'
   AND r.name = 'administrator'
 ON CONFLICT DO NOTHING;
+SQL
+unset ADMIN_HASH
 ```
 
-Do not insert a plaintext password into the `users.password` column.
+Do not insert a plaintext password into the `users.password` column. If you are migrating an existing PieNg database, supported legacy password hashes can instead be retained and are upgraded after a successful login.
 
 ## 9. Firewall
 
@@ -204,7 +249,7 @@ Only the reverse proxy needs to be reachable externally. Leave GoPieNg bound to 
 Before an upgrade, back up PostgreSQL:
 
 ```sh
-sudo -u postgres pg_dump -Fc pieng > /root/pieng-$(date +%F).dump
+sudo sh -c 'sudo -u postgres pg_dump -Fc pieng > /root/pieng-$(date +%F).dump'
 ```
 
 Then update and rebuild:
