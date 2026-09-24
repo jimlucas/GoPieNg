@@ -235,6 +235,7 @@ package main
 
 import (
     "fmt"
+    "io"
     "log"
     "os"
 
@@ -242,10 +243,14 @@ import (
 )
 
 func main() {
-    if len(os.Args) != 2 {
-        log.Fatal("usage: bootstrap PASSWORD")
+    input, err := io.ReadAll(os.Stdin)
+    if err != nil {
+        log.Fatal(err)
     }
-    hash, err := auth.HashPassword(os.Args[1])
+    if len(input) == 0 {
+        log.Fatal("input is required")
+    }
+    hash, err := auth.HashPassword(string(input))
     if err != nil {
         log.Fatal(err)
     }
