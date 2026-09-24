@@ -147,13 +147,18 @@ Create `/etc/rc.d/gopieng`:
 ```sh
 #!/bin/ksh
 
-daemon="/usr/local/sbin/gopieng-wrapper"
+daemon="/usr/local/bin/gopieng"
 daemon_flags="-d -no-static -socket /var/www/run/gopieng.sock"
+pexp="${daemon}${daemon_flags:+ ${daemon_flags}}"
 
 . /etc/rc.d/rc.subr
 
 rc_reload=NO
 rc_bg=YES
+
+rc_start() {
+    /usr/local/sbin/gopieng-wrapper ${daemon_flags} &
+}
 
 rc_cmd $1
 ```
