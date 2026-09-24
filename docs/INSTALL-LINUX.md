@@ -189,6 +189,7 @@ package main
 
 import (
     "fmt"
+    "io"
     "log"
     "os"
 
@@ -196,10 +197,14 @@ import (
 )
 
 func main() {
-    if len(os.Args) != 2 {
-        log.Fatal("usage: bootstrap PASSWORD")
+    input, err := io.ReadAll(os.Stdin)
+    if err != nil {
+        log.Fatal(err)
     }
-    hash, err := auth.HashPassword(os.Args[1])
+    if len(input) == 0 {
+        log.Fatal("input is required")
+    }
+    hash, err := auth.HashPassword(string(input))
     if err != nil {
         log.Fatal(err)
     }
@@ -214,7 +219,7 @@ Because Go's `internal` package rules require the helper to be inside the module
 sudo mkdir -p /opt/gopieng/cmd/bootstrap-admin
 sudo cp /tmp/gopieng-bootstrap/main.go /opt/gopieng/cmd/bootstrap-admin/main.go
 read -rsp 'Initial admin password: ' ADMIN_PASSWORD; echo
-ADMIN_HASH=$(cd /opt/gopieng && sudo go run ./cmd/bootstrap-admin "$ADMIN_PASSWORD")
+ADMIN_HASH=$(printf '%s' "$ADMIN_PASSWORD" | (cd /opt/gopieng && sudo go run ./cmd/bootstrap-admin))
 unset ADMIN_PASSWORD
 sudo rm -rf /opt/gopieng/cmd/bootstrap-admin /tmp/gopieng-bootstrap
 ```
