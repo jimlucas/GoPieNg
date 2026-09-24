@@ -1406,11 +1406,6 @@ function UsersPage(){
   if (isAdmin()) {
     // Admin view: full user management
     card.appendChild(el('h2', {}, 'User Management'))
-    const selfPassword = el('details')
-    selfPassword.appendChild(el('summary', {}, 'Change your password'))
-    selfPassword.appendChild(PasswordChangeForm())
-    card.appendChild(selfPassword)
-
     // Add user form
     const addForm = el('div', { class: 'user-form' })
     const userInput = el('input', { type: 'text', placeholder: 'Username' })
@@ -1550,17 +1545,10 @@ function UsersPage(){
       container.appendChild(el('div', { class: 'sub' }, 'Failed: ' + e.message))
     })
   } else {
-    // Non-admin view: change own password only
-    card.appendChild(el('h2', {}, 'Change Password'))
-
-    card.appendChild(PasswordChangeForm())
-
-    // Show current role (read-only)
+    card.appendChild(el('h2', {}, 'User'))
     const roles = store.user?.roles || []
     const roleText = roles.length > 0 ? roles.join(', ') : 'reader'
-    const roleInfo = el('div', { class: 'sub', style: 'margin-top: 1rem;' },
-      `Your role: ${roleText}`)
-    card.appendChild(roleInfo)
+    card.appendChild(el('div', { class: 'sub' }, `Your role: ${roleText}`))
   }
 
   return card
@@ -1592,6 +1580,7 @@ function PasswordChangeForm(){
         currentPass.value = ''
         newPass.value = ''
         confirmPass.value = ''
+        document.querySelector('.warning-modal-overlay')?.remove()
         pushToast('Password changed. Sign in again.', 'info')
       } catch(e) {
         pushToast('Failed: ' + e.message, 'error')
@@ -1599,10 +1588,31 @@ function PasswordChangeForm(){
     }
 
     form.appendChild(currentPass)
+    form.appendChild(el('br'))
     form.appendChild(newPass)
+    form.appendChild(el('br'))
     form.appendChild(confirmPass)
+    form.appendChild(el('br'))
     form.appendChild(saveBtn)
     return form
+}
+
+export function showOwnPasswordModal(){
+  if (!store.user?.id) {
+    pushToast('User ID not available', 'error')
+    return
+  }
+  const overlay = el('div', { class: 'warning-modal-overlay' })
+  const modal = el('div', { class: 'warning-modal confirm-modal' })
+  modal.onclick = (e) => e.stopPropagation()
+  modal.appendChild(el('div', { class: 'confirm-text' }, 'Change Password'))
+  modal.appendChild(PasswordChangeForm())
+  const cancelBtn = el('button', { class: 'confirm-cancel' }, 'Cancel')
+  cancelBtn.onclick = () => overlay.remove()
+  const buttons = el('div', { class: 'confirm-buttons' }, cancelBtn)
+  modal.appendChild(buttons)
+  overlay.appendChild(modal)
+  document.body.appendChild(overlay)
 }
 
 function LogsPage(){
