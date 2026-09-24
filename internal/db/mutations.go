@@ -312,7 +312,7 @@ func (m mutations) createNetwork(w http.ResponseWriter, r *http.Request) {
 		req.Description = "manual"
 	}
 
-	m.write(w, r, "creator", func(tx *sql.Tx, actor *auth.Claims) (any, error) {
+	m.write(w, r, "administrator", func(tx *sql.Tx, actor *auth.Claims) (any, error) {
 		ctx := r.Context()
 		cidr := requested.String()
 
