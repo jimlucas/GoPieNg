@@ -1,7 +1,7 @@
 import { compareAddresses } from './refresh.js'
 import { api, auth } from './api.js'
 import { store } from './store.js'
-import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal } from './util.js'
+import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal, showPasswordResetModal } from './util.js'
 
 // Track expanded nodes
 const expanded = new Set()
@@ -1509,6 +1509,23 @@ function UsersPage(){
           }
         }
         actTd.appendChild(statusBtn)
+
+        // Administrators can reset another user's password. The backend
+        // hashes the replacement with Argon2id before storing it.
+        if (user.id !== store.user?.id) {
+          const resetBtn = el('button', { class: 'btn-sm' }, 'password')
+          resetBtn.onclick = async () => {
+            const password = await showPasswordResetModal(user.username)
+            if (password === null) return
+            try {
+              await api.updateUser(user.id, { password })
+              pushToast('Password reset for ' + user.username, 'info')
+            } catch(e) {
+              pushToast('Failed: ' + e.message, 'error')
+            }
+          }
+          actTd.appendChild(resetBtn)
+        }
 
         const delBtn = el('button', { class: 'btn-sm btn-del' }, 'del')
         delBtn.onclick = async () => {
