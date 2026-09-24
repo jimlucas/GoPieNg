@@ -1,7 +1,7 @@
 import { ChangeTracker, compareAddresses } from './refresh.js'
 import { api, auth } from './api.js'
 import { store } from './store.js'
-import { mountApp, setResetScroll } from './components.js'
+import { mountApp, setResetScroll, showOwnPasswordModal } from './components.js'
 
 const root = document.getElementById('app')
 
@@ -53,6 +53,11 @@ mountApp(root)
       html.dataset.theme = next
       localStorage.setItem('theme', next)
     })
+  }
+
+  const changePasswordBtn = document.getElementById('changePasswordBtn')
+  if (changePasswordBtn) {
+    changePasswordBtn.addEventListener('click', () => showOwnPasswordModal())
   }
   
   // Network health monitoring and change detection - poll every 5 seconds
