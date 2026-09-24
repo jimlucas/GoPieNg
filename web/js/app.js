@@ -1,7 +1,7 @@
-import { ChangeTracker, compareAddresses } from './refresh.js?v=13'
-import { api, auth } from './api.js?v=13'
-import { store } from './store.js?v=13'
-import { mountApp, setResetScroll } from './components.js?v=13'
+import { ChangeTracker, compareAddresses } from './refresh.js'
+import { api, auth } from './api.js'
+import { store } from './store.js'
+import { mountApp, setResetScroll } from './components.js'
 
 const root = document.getElementById('app')
 

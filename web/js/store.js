@@ -1,4 +1,4 @@
-import { withoutDescendants } from './refresh.js?v=13'
+import { withoutDescendants } from './refresh.js'
 export const store = {
   message:null,
   error:null,
