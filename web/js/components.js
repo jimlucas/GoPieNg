@@ -102,7 +102,7 @@ function NetworkTree(){
   const heading = el('div', { class:'network-heading' })
   heading.appendChild(el('h2', {}, 'Networks'))
 
-  if (isCreator()) {
+  if (isAdmin()) {
     const addDetails = el('details', { class:'network-add' })
     addDetails.appendChild(el('summary', { class:'btn-sm' }, 'Add Network'))
 
