@@ -132,3 +132,99 @@ export function showConfirmModal(msg, confirmLabel = 'Delete') {
     cancelBtn.focus()
   })
 }
+
+
+export function showPasswordResetModal(username) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.className = 'warning-modal-overlay'
+
+    const modal = document.createElement('div')
+    modal.className = 'warning-modal confirm-modal'
+    modal.onclick = (e) => e.stopPropagation()
+
+    const text = document.createElement('div')
+    text.className = 'confirm-text'
+    text.textContent = 'Reset password for ' + username
+    modal.appendChild(text)
+
+    const form = document.createElement('div')
+    form.className = 'password-reset-form'
+
+    const password = document.createElement('input')
+    password.type = 'password'
+    password.placeholder = 'New password'
+    password.autocomplete = 'new-password'
+
+    const confirm = document.createElement('input')
+    confirm.type = 'password'
+    confirm.placeholder = 'Confirm new password'
+    confirm.autocomplete = 'new-password'
+
+    const error = document.createElement('div')
+    error.className = 'login-error hidden'
+
+    form.appendChild(password)
+    form.appendChild(confirm)
+    form.appendChild(error)
+    modal.appendChild(form)
+
+    const buttons = document.createElement('div')
+    buttons.className = 'confirm-buttons'
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.className = 'confirm-cancel'
+    cancelBtn.textContent = 'Cancel'
+
+    const okBtn = document.createElement('button')
+    okBtn.className = 'confirm-ok'
+    okBtn.textContent = 'Reset Password'
+
+    const dismiss = (value) => {
+      overlay.remove()
+      resolve(value)
+    }
+    const submit = () => {
+      error.classList.add('hidden')
+      if (password.value.length < 8) {
+        error.textContent = 'Password must be at least 8 characters'
+        error.classList.remove('hidden')
+        password.focus()
+        return
+      }
+      if (password.value !== confirm.value) {
+        error.textContent = 'Passwords do not match'
+        error.classList.remove('hidden')
+        confirm.focus()
+        return
+      }
+      dismiss(password.value)
+    }
+
+    cancelBtn.onclick = () => dismiss(null)
+    okBtn.onclick = submit
+    password.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        confirm.focus()
+      } else if (e.key === 'Escape') {
+        dismiss(null)
+      }
+    }
+    confirm.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        submit()
+      } else if (e.key === 'Escape') {
+        dismiss(null)
+      }
+    }
+
+    buttons.appendChild(cancelBtn)
+    buttons.appendChild(okBtn)
+    modal.appendChild(buttons)
+    overlay.appendChild(modal)
+    document.body.appendChild(overlay)
+    password.focus()
+  })
+}
