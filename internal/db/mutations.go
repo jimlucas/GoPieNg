@@ -489,6 +489,16 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 				return nil, problem(400, "cannot change network address family")
 			}
 			if requested != n.prefix {
+				// Resizing changes only the prefix length. Relocating a network to
+				// a different address is a distinct operation and is not supported.
+				commonBits := requested.Bits()
+				if n.prefix.Bits() < commonBits {
+					commonBits = n.prefix.Bits()
+				}
+				if netip.PrefixFrom(requested.Addr(), commonBits).Masked() != netip.PrefixFrom(n.prefix.Addr(), commonBits).Masked() {
+					return nil, problem(409, "network resize cannot relocate the network address")
+				}
+
 				// Child networks must remain wholly inside their parent.
 				var parentID sql.NullInt64
 				if err := tx.QueryRowContext(ctx, `SELECT parent FROM networks WHERE id=$1`, id).Scan(&parentID); err != nil {
