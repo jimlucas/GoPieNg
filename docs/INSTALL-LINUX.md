@@ -40,7 +40,7 @@ CREATE DATABASE pieng OWNER pieng;
 The examples below install the source in `/opt/gopieng` and the executable in `/usr/local/bin`.
 
 ```sh
-sudo git clone https://github.com/jimlucas/GoPieNg.git /opt/gopieng
+sudo git clone https://github.com/yellowman/GoPieNg.git /opt/gopieng
 cd /opt/gopieng
 sudo go build -o /usr/local/bin/gopieng ./cmd/server
 sudo chmod 0755 /usr/local/bin/gopieng
