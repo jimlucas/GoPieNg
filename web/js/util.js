@@ -165,7 +165,9 @@ export function showPasswordResetModal(username) {
     error.className = 'login-error hidden'
 
     form.appendChild(password)
+    form.appendChild(document.createElement('br'))
     form.appendChild(confirm)
+    form.appendChild(document.createElement('br'))
     form.appendChild(error)
     modal.appendChild(form)
 
