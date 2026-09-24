@@ -45,7 +45,7 @@ CREATE DATABASE pieng OWNER pieng;
 
 ```sh
 cd /usr/local/src
-doas git clone https://github.com/jimlucas/GoPieNg.git
+doas git clone https://github.com/yellowman/GoPieNg.git
 cd GoPieNg
 doas go build -o /usr/local/bin/gopieng ./cmd/server
 doas chmod 0755 /usr/local/bin/gopieng
