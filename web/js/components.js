@@ -386,12 +386,17 @@ function TreeNode(net, depth){
       cidrInput.classList.add('hidden')
     }
 
-    cidrInput.onblur = async () => {
+    let cidrSubmitting = false
+
+    const submitCIDREdit = async () => {
+      if (cidrSubmitting) return
       const nextCIDR = cidrInput.value.trim()
       if (!nextCIDR || nextCIDR === net.address_range) {
         cancelCIDREdit()
         return
       }
+
+      cidrSubmitting = true
       try {
         const confirmed = await showConfirmModal(
           `Resize network ${net.address_range} to ${nextCIDR}? Existing hosts and child networks must remain inside the new range, and expansion cannot overlap another allocation.`,
@@ -411,15 +416,27 @@ function TreeNode(net, depth){
       } catch(e) {
         pushToast('Resize failed: ' + e.message, 'error')
         cidrInput.value = net.address_range || ''
+      } finally {
+        cidrSubmitting = false
+        cidrSpan.classList.remove('hidden')
+        cidrInput.classList.add('hidden')
       }
-      cidrSpan.classList.remove('hidden')
-      cidrInput.classList.add('hidden')
+    }
+
+    cidrInput.onblur = () => {
+      if (!cidrSubmitting) cancelCIDREdit()
     }
 
     cidrInput.onkeydown = (e) => {
       e.stopPropagation()
-      if (e.key === 'Enter') cidrInput.blur()
-      if (e.key === 'Escape') cancelCIDREdit()
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        submitCIDREdit()
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        cancelCIDREdit()
+      }
     }
 
     cidrWrap.appendChild(cidrSpan)
