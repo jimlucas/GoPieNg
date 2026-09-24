@@ -104,7 +104,28 @@ PIENG_CHROOT=/var/www/run
 PIENG_TRUSTED_PROXIES=127.0.0.1/32
 ```
 
-For an `rc.d(8)` service, set these variables in the service command environment rather than placing secrets in `httpd.conf`.
+Store the daemon environment in a root-only file:
+
+```sh
+doas install -m 0600 -o root -g wheel /dev/null /etc/gopieng.env
+doas vi /etc/gopieng.env
+```
+
+Put the required and optional assignments shown above in that file. Do not place these secrets in `httpd.conf` or a world-readable file.
+
+Create a root-owned wrapper that exports the assignments before starting GoPieNg:
+
+```sh
+doas tee /usr/local/sbin/gopieng-wrapper >/dev/null <<'EOF'
+#!/bin/ksh
+set -a
+. /etc/gopieng.env
+set +a
+exec /usr/local/bin/gopieng "$@"
+EOF
+doas chown root:wheel /usr/local/sbin/gopieng-wrapper
+doas chmod 0500 /usr/local/sbin/gopieng-wrapper
+```
 
 ## 7. Install frontend files for httpd
 
@@ -128,11 +149,16 @@ Create `/etc/rc.d/gopieng`:
 
 daemon="/usr/local/bin/gopieng"
 daemon_flags="-d -no-static -socket /var/www/run/gopieng.sock"
+pexp="${daemon}${daemon_flags:+ ${daemon_flags}}"
 
 . /etc/rc.d/rc.subr
 
 rc_reload=NO
 rc_bg=YES
+
+rc_start() {
+    /usr/local/sbin/gopieng-wrapper ${daemon_flags} &
+}
 
 rc_cmd $1
 ```
@@ -142,10 +168,6 @@ Make it executable:
 ```sh
 doas chmod 0555 /etc/rc.d/gopieng
 ```
-
-Because GoPieNg needs its database DSN and JWT secret in its environment, configure the service with an environment wrapper or an appropriately protected local rc.d customization. Do not put secrets in world-readable files.
-
-One straightforward approach is to create `/etc/gopieng.env` mode `0600` and a root-owned wrapper that exports the values before executing GoPieNg. Ensure the environment is available to the daemon before enabling it.
 
 The `-d` flag is intentional under `rc.d`: it keeps GoPieNg in the foreground so `rc.d` supervises the actual daemon process.
 
