@@ -96,7 +96,40 @@ html, body {
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .status-dot.error { background: var(--red); }
 
-.user-badge { font-size: 0.8rem; color: var(--text-1); }
+
+.user-badge { font-size: 0.8rem; color: var(--text-1); cursor: default; }
+
+.user-menu { position: relative; padding: 0.9rem 0; }
+.user-menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 160px;
+  padding: 0.35rem;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  z-index: 200;
+}
+.user-menu:hover .user-menu-dropdown,
+.user-menu:focus-within .user-menu-dropdown { display: flex; flex-direction: column; }
+.user-menu-dropdown button {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: var(--text-1);
+  font-size: 0.8rem;
+}
+.user-menu-dropdown button:hover { background: var(--bg-2); color: var(--text-0); }
+
+.password-reset-form input { display: block; width: 100%; min-width: 260px; }
+.password-reset-form br { line-height: 1rem; }
+.password-reset-form .login-error { margin: 0.75rem 0; text-align: left; }
+
 
 .logout-btn {
   background: transparent;
