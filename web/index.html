@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=13"/>
-  <script type="module" src="js/app.js?v=13"></script>
+  <link rel="stylesheet" href="css/styles.css?v=14"/>
+  <script type="module" src="js/app.js?v=14"></script>
 </head>
 <body class="not-authed">
   <div id="networkBanner" class="network-banner hidden">Server not responding - network may be unavailable</div>
@@ -33,9 +33,14 @@
       </div>
       <div class="header-right">
         <div class="status" id="apiStatus"><span class="status-dot"></span><span id="apiStatusText">…</span></div>
-        <span id="userBadge" class="user-badge">not signed in</span>
-        <button id="logoutBtn" class="logout-btn" title="Sign out">logout</button>
-        <button class="theme-toggle" id="themeToggle" title="Toggle theme"></button>
+        <div class="user-menu">
+          <span id="userBadge" class="user-badge" tabindex="0">not signed in</span>
+          <div class="user-menu-dropdown">
+            <button id="changePasswordBtn" type="button">Change Password</button>
+            <button id="themeToggle" type="button">Toggle Theme</button>
+            <button id="logoutBtn" type="button">Logout</button>
+          </div>
+        </div>
       </div>
     </header>
     <main id="app" class="page active"></main>
