@@ -233,10 +233,10 @@ User management is available in the UI under the Users tab (administrator only).
 
 | Role | Permissions |
 |------|-------------|
-| `administrator` | Full access including user management and network settings |
-| `creator` | Create/delete networks, plus all editor permissions |
-| `editor` | Create/edit/delete hosts, edit network descriptions |
-| `reader` | View only (default for users with no role) |
+| `administrator` | Full access including top-level networks, network settings, and user management |
+| `creator` | Allocate/remove child subnets, plus all editor permissions |
+| `editor` | Create/edit/delete hosts and edit network metadata |
+| `reader` | View-only access |
 
 To grant administrator to an existing user via SQL:
 
