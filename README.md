@@ -289,9 +289,12 @@ The default API base path is `/api/pieng`.
 ### Networks
 - `GET /api/pieng/networks` - List networks (query params: `parent_id`, `q`)
 - `GET /api/pieng/networks/{id}` - Get network details
-- `PATCH /api/pieng/networks/{id}` - Update network (description, owner, valid_masks, etc.)
-- `DELETE /api/pieng/networks/{id}` - Delete network
-- `POST /api/pieng/networks/{id}/allocate-subnet` - Allocate subnet (body: `{mask, description}` or `{cidr, description, subdivide}`)
+- `POST /api/pieng/networks` - Create a top-level network (administrator)
+- `PATCH /api/pieng/networks/{id}` - Update metadata (editor+); CIDR, subdivision, and allocation masks require administrator
+- `DELETE /api/pieng/networks/{id}` - Remove an empty child subnet (creator+) or empty top-level network (administrator)
+- `POST /api/pieng/networks/{id}/allocate-subnet` - Allocate a child subnet (creator+; body: `{mask, description}` or `{cidr, description, subdivide}`)
+
+CIDR changes resize an existing network; they do not relocate it to an unrelated address range. Existing overlap, containment, child, host, and allocation-mask checks still apply.
 
 ### Hosts
 - `GET /api/pieng/networks/{id}/hosts` - List hosts in network
