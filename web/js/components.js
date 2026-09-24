@@ -1,7 +1,7 @@
-import { compareAddresses } from './refresh.js?v=10'
-import { api, auth } from './api.js?v=10'
-import { store } from './store.js?v=10'
-import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal } from './util.js?v=10'
+import { compareAddresses } from './refresh.js?v=12'
+import { api, auth } from './api.js?v=12'
+import { store } from './store.js?v=12'
+import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal } from './util.js?v=12'
 
 // Track expanded nodes
 const expanded = new Set()
