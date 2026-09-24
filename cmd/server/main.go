@@ -374,33 +374,3 @@ func cacheControl(h http.Handler, value string) http.Handler {
 	})
 }
 
-func spaIndex(indexPath string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, indexPath)
-	}
-}
-
-func spaAssets(uiDir string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		p := strings.TrimPrefix(r.URL.Path, "/ui/")
-		// Sanitize path
-		p = filepath.Clean(p)
-		if strings.HasPrefix(p, "..") {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		fp := filepath.Join(uiDir, p)
-		if _, err := os.Stat(fp); err == nil {
-			// Set cache for assets
-			if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
-				w.Header().Set("Cache-Control", "public, max-age=3600")
-			}
-			http.ServeFile(w, r, fp)
-			return
-		}
-		// Fallback to index for client routing
-		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, filepath.Join(uiDir, "index.html"))
-	}
-}
