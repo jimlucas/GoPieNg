@@ -201,7 +201,7 @@ func buildRouter(database *db.DB, jwt *auth.Manager, noStatic bool, webRoot stri
 		if err != nil {
 			return nil, err
 		}
-		static := cacheControl(http.FileServer(http.FS(assets)), "public, max-age=3600")
+		static := cacheControl(http.FileServer(http.FS(assets)), "no-cache")
 		r.Mount("/css/", static)
 		r.Mount("/js/", static)
 		indexHandler := func(w http.ResponseWriter, r *http.Request) {
