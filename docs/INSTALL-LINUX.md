@@ -85,7 +85,7 @@ PIENG_ADDR=127.0.0.1:8080
 PIENG_TRUSTED_PROXIES=127.0.0.1/32
 ```
 
-Keep this file readable only by root because it contains database credentials and the JWT signing secret.
+Keep this file readable only by root because it contains database credentials and the JWT signing secret. systemd reads `EnvironmentFile=` during service setup and supplies those values to the process before applying `User=gopieng`, so the service account does not need direct read access to `/etc/gopieng.env`.
 
 ## 6. Create the systemd service
 
