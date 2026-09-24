@@ -235,6 +235,7 @@ package main
 
 import (
     "fmt"
+    "io"
     "log"
     "os"
 
@@ -242,10 +243,14 @@ import (
 )
 
 func main() {
-    if len(os.Args) != 2 {
-        log.Fatal("usage: bootstrap PASSWORD")
+    input, err := io.ReadAll(os.Stdin)
+    if err != nil {
+        log.Fatal(err)
     }
-    hash, err := auth.HashPassword(os.Args[1])
+    if len(input) == 0 {
+        log.Fatal("input is required")
+    }
+    hash, err := auth.HashPassword(string(input))
     if err != nil {
         log.Fatal(err)
     }
@@ -258,7 +263,7 @@ Generate the hash and immediately remove the helper:
 
 ```sh
 read -s ADMIN_PASSWORD?'Initial admin password: '; echo
-ADMIN_HASH=$(cd /usr/local/src/GoPieNg && doas go run ./cmd/bootstrap-admin "$ADMIN_PASSWORD")
+ADMIN_HASH=$(printf '%s' "$ADMIN_PASSWORD" | (cd /usr/local/src/GoPieNg && doas go run ./cmd/bootstrap-admin))
 unset ADMIN_PASSWORD
 doas rm -rf /usr/local/src/GoPieNg/cmd/bootstrap-admin
 ```
