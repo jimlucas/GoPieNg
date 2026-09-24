@@ -1555,7 +1555,7 @@ function UsersPage(){
 }
 
 function PasswordChangeForm(){
-    const form = el('div', { class: 'user-form' })
+    const form = el('div', { class: 'password-reset-form' })
     const currentPass = el('input', { type: 'password', placeholder: 'Current password' })
     const newPass = el('input', { type: 'password', placeholder: 'New password' })
     const confirmPass = el('input', { type: 'password', placeholder: 'Confirm new password' })
