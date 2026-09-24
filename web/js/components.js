@@ -1,7 +1,7 @@
-import { compareAddresses } from './refresh.js?v=12'
-import { api, auth } from './api.js?v=12'
-import { store } from './store.js?v=12'
-import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal } from './util.js?v=12'
+import { compareAddresses } from './refresh.js?v=13'
+import { api, auth } from './api.js?v=13'
+import { store } from './store.js?v=13'
+import { $, $$, el, notify, pushToast, showWarningModal, showConfirmModal } from './util.js?v=13'
 
 // Track expanded nodes
 const expanded = new Set()
@@ -102,7 +102,7 @@ function NetworkTree(){
   const heading = el('div', { class:'network-heading' })
   heading.appendChild(el('h2', {}, 'Networks'))
 
-  if (isCreator()) {
+  if (isAdmin()) {
     const addDetails = el('details', { class:'network-add' })
     addDetails.appendChild(el('summary', { class:'btn-sm' }, 'Add Network'))
 
