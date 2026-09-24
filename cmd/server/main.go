@@ -373,4 +373,3 @@ func cacheControl(h http.Handler, value string) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
-

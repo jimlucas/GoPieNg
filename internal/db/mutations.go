@@ -454,11 +454,11 @@ func (m mutations) updateNetwork(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AddressRange *string  `json:"address_range"`
 		Description  *string  `json:"description"`
-		Owner       *string  `json:"owner"`
-		Account     *string  `json:"account"`
-		Service     *int64   `json:"service"`
-		Subdivide   *bool    `json:"subdivide"`
-		ValidMasks  *[]int16 `json:"valid_masks"`
+		Owner        *string  `json:"owner"`
+		Account      *string  `json:"account"`
+		Service      *int64   `json:"service"`
+		Subdivide    *bool    `json:"subdivide"`
+		ValidMasks   *[]int16 `json:"valid_masks"`
 	}
 	if !decodeRequest(w, r, &req) {
 		return
