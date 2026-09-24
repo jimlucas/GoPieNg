@@ -869,8 +869,12 @@ function createAllocBar(parent, container){
   bar.appendChild(nextBtn)
 
   // Edit mode button to show available subnets
-  const editBtn = el('button', { class: 'btn-edit-mode', title: 'Show available subnets' }, 'e')
-  editBtn.onclick = () => showAvailableSubnets(parent, container, descInput, () => selectedMask)
+  const editBtn = el('button', { class: 'btn-edit-mode', title: 'Show available subnets' }, '▶')
+  editBtn.onclick = () => {
+    const existing = container.querySelector('.avail-subnets')
+    editBtn.textContent = existing ? '▶' : '▼'
+    showAvailableSubnets(parent, container, descInput, () => selectedMask)
+  }
   bar.appendChild(editBtn)
 
   return bar
@@ -1143,7 +1147,7 @@ async function loadHostPanel(panel, network, highlightAddr = null){
     addForm.appendChild(addBtn)
 
     // Edit mode toggle button
-    const editBtn = el('button', { class: 'btn-edit-mode', title: 'Show all addresses' }, 'E')
+    const editBtn = el('button', { class: 'btn-edit-mode', title: 'Show all addresses' }, '▶')
     editBtn.onclick = () => loadHostPanelEditMode(panel, network)
 
     header.appendChild(addForm)
@@ -1206,7 +1210,7 @@ async function loadHostPanelEditMode(panel, network){
   const header = el('div', { class: 'host-header' })
   header.appendChild(el('span', { class: 'edit-mode-label' }, 'All addresses in ' + network.address_range))
 
-  const backBtn = el('button', { class: 'btn-edit-mode active' }, 'E')
+  const backBtn = el('button', { class: 'btn-edit-mode active' }, '▼')
   backBtn.title = 'Back to normal view'
   backBtn.onclick = () => {
     panel.dataset.loaded = ''
