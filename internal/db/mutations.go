@@ -674,6 +674,14 @@ func (m mutations) deleteNetwork(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		ctx := r.Context()
+		var parentID sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT parent FROM networks WHERE id=$1`, id).Scan(&parentID); err != nil {
+			return nil, err
+		}
+		if !parentID.Valid && !hasRole(actor, "administrator") {
+			return nil, problem(403, "deleting a top-level network requires administrator")
+		}
+
 		var childCount, hostCount int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM networks WHERE parent=$1`, id).Scan(&childCount); err != nil {
 			return nil, err
@@ -683,10 +691,6 @@ func (m mutations) deleteNetwork(w http.ResponseWriter, r *http.Request) {
 		}
 		if childCount > 0 || hostCount > 0 {
 			return nil, problem(409, fmt.Sprintf("cannot remove subnet allocation: %d child subnet(s) and %d host/IP entry(s) still exist", childCount, hostCount))
-		}
-		var parentID sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT parent FROM networks WHERE id=$1`, id).Scan(&parentID); err != nil {
-			return nil, err
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM networks WHERE id=$1`, id); err != nil {
 			return nil, err
