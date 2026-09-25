@@ -103,71 +103,91 @@ function NetworkTree(){
   heading.appendChild(el('h2', {}, 'Networks'))
 
   if (isAdmin()) {
-    const addDetails = el('details', { class:'network-add' })
-    addDetails.appendChild(el('summary', { class:'btn-sm' }, 'Add Network'))
+    const addNetworkBtn = el('button', { class:'primary network-add-btn' }, 'Add Network')
+    addNetworkBtn.onclick = () => {
+      const overlay = el('div', { class:'warning-modal-overlay' })
+      const modal = el('div', { class:'warning-modal confirm-modal network-add-modal' })
+      modal.onclick = (e) => e.stopPropagation()
 
-    const addForm = el('div', { class:'user-form' })
-    const cidrInput = el('input', {
-      type:'text',
-      placeholder:'Network CIDR (e.g. 10.0.0.0/8)',
-      autocomplete:'off'
-    })
-    const descInput = el('input', {
-      type:'text',
-      placeholder:'Description',
-      autocomplete:'off'
-    })
-    const typeSelect = el('select')
-    typeSelect.appendChild(el('option', { value:'subdivide' }, 'Parent / subdividable'))
-    typeSelect.appendChild(el('option', { value:'leaf' }, 'Leaf / hosts'))
+      const addForm = el('div', { class:'network-add-form' })
+      const cidrInput = el('input', {
+        type:'text',
+        placeholder:'Network CIDR (e.g. 10.0.0.0/8)',
+        autocomplete:'off'
+      })
+      const descInput = el('input', {
+        type:'text',
+        placeholder:'Description',
+        autocomplete:'off'
+      })
+      const typeSelect = el('select')
+      typeSelect.appendChild(el('option', { value:'subdivide' }, 'Parent / subdividable'))
+      typeSelect.appendChild(el('option', { value:'leaf' }, 'Leaf / hosts'))
 
-    const addBtn = el('button', { class:'primary' }, 'Add Network')
-    addBtn.onclick = async () => {
-      const cidr = cidrInput.value.trim()
-      if (!cidr) {
-        pushToast('Network CIDR required', 'error')
-        cidrInput.focus()
-        return
-      }
+      const createBtn = el('button', { class:'primary' }, 'Add Network')
+      const cancelBtn = el('button', { class:'confirm-cancel' }, 'Cancel')
 
-      addBtn.disabled = true
-      try {
-        const created = await api.createNetwork(cidr, descInput.value.trim(), typeSelect.value === 'subdivide')
-        cidrInput.value = ''
-        descInput.value = ''
-        typeSelect.value = 'subdivide'
-        addDetails.open = false
-        if (window.syncLastChange) window.syncLastChange()
+      const closeModal = () => overlay.remove()
+      cancelBtn.onclick = closeModal
+      overlay.onclick = closeModal
 
-        // The POST is committed before this refresh. Add its response to the
-        // store immediately so a transient GET failure cannot be mistaken for
-        // a failed creation or encourage a duplicate retry.
-        store.set({ networks: [...store.networks, created] })
-        pushToast('Network created', 'info')
-
-        try {
-          const list = await api.networks()
-          store.set({ networks: Array.isArray(list) ? list : store.networks })
-        } catch(e) {
-          pushToast('Network created, but refresh failed: ' + e.message, 'error')
+      createBtn.onclick = async () => {
+        const cidr = cidrInput.value.trim()
+        if (!cidr) {
+          pushToast('Network CIDR required', 'error')
+          cidrInput.focus()
+          return
         }
-      } catch(e) {
-        pushToast('Failed: ' + e.message, 'error')
-      } finally {
-        addBtn.disabled = false
+
+        createBtn.disabled = true
+        try {
+          const created = await api.createNetwork(cidr, descInput.value.trim(), typeSelect.value === 'subdivide')
+          closeModal()
+          if (window.syncLastChange) window.syncLastChange()
+
+          // The POST is committed before this refresh. Add its response to the
+          // store immediately so a transient GET failure cannot be mistaken for
+          // a failed creation or encourage a duplicate retry.
+          store.set({ networks: [...store.networks, created] })
+          pushToast('Network created', 'info')
+
+          try {
+            const list = await api.networks()
+            store.set({ networks: Array.isArray(list) ? list : store.networks })
+          } catch(e) {
+            pushToast('Network created, but refresh failed: ' + e.message, 'error')
+          }
+        } catch(e) {
+          pushToast('Failed: ' + e.message, 'error')
+        } finally {
+          createBtn.disabled = false
+        }
       }
+
+      const handleEnter = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          createBtn.click()
+        }
+        if (e.key === 'Escape') closeModal()
+      }
+      cidrInput.onkeydown = handleEnter
+      descInput.onkeydown = handleEnter
+      typeSelect.onkeydown = handleEnter
+
+      addForm.appendChild(cidrInput)
+      addForm.appendChild(descInput)
+      addForm.appendChild(typeSelect)
+
+      modal.appendChild(el('div', { class:'confirm-text' }, 'Add Network'))
+      modal.appendChild(addForm)
+      modal.appendChild(el('div', { class:'confirm-buttons' }, cancelBtn, createBtn))
+      overlay.appendChild(modal)
+      document.body.appendChild(overlay)
+      cidrInput.focus()
     }
 
-    const handleEnter = (e) => { if (e.key === 'Enter') addBtn.click() }
-    cidrInput.onkeydown = handleEnter
-    descInput.onkeydown = handleEnter
-
-    addForm.appendChild(cidrInput)
-    addForm.appendChild(descInput)
-    addForm.appendChild(typeSelect)
-    addForm.appendChild(addBtn)
-    addDetails.appendChild(addForm)
-    heading.appendChild(addDetails)
+    heading.appendChild(addNetworkBtn)
   }
 
   card.appendChild(heading)
