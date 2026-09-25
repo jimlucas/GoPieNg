@@ -1397,3 +1397,28 @@ body:has(.network-banner:not(.hidden)) .app-header {
     margin-right: 0.5rem;
   }
 }
+
+
+/* Network page header and add-network modal */
+.network-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.network-heading h2 { margin-right: auto; }
+.network-add-btn { flex: 0 0 auto; }
+.network-add-modal { min-width: min(420px, 90vw); }
+.network-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+.network-add-form input,
+.network-add-form select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
