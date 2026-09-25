@@ -147,18 +147,17 @@ Create `/etc/rc.d/gopieng`:
 ```sh
 #!/bin/ksh
 
-daemon="/usr/local/bin/gopieng"
+daemon="/usr/local/sbin/gopieng-wrapper"
 daemon_flags="-d -no-static -socket /var/www/run/gopieng.sock"
-pexp="${daemon}${daemon_flags:+ ${daemon_flags}}"
 
 . /etc/rc.d/rc.subr
 
-rc_reload=NO
-rc_bg=YES
+# The wrapper execs /usr/local/bin/gopieng, so match the resulting
+# GoPieNg process rather than the wrapper pathname.
+pexp="/usr/local/bin/gopieng${daemon_flags:+ ${daemon_flags}}"
 
-rc_start() {
-    /usr/local/sbin/gopieng-wrapper ${daemon_flags} &
-}
+rc_bg=YES
+rc_reload=NO
 
 rc_cmd $1
 ```
@@ -169,7 +168,7 @@ Make it executable:
 doas chmod 0555 /etc/rc.d/gopieng
 ```
 
-The `-d` flag is intentional under `rc.d`: it keeps GoPieNg in the foreground so `rc.d` supervises the actual daemon process.
+The `-d` flag is intentional under `rc.d`: it keeps GoPieNg in the foreground so `rc.subr` can manage the actual service process. `rc_bg=YES` tells the standard OpenBSD `rc_start()`/`rc_exec()` machinery to background the foreground-running service; do not add a custom `rc_start()` or manually append `&`. Because the wrapper uses `exec` to replace itself with `/usr/local/bin/gopieng`, `pexp` explicitly matches the resulting GoPieNg command line.
 
 Enable and start the service after its environment is configured:
 
