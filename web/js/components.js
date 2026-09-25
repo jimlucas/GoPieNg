@@ -1414,6 +1414,80 @@ function HostRow(host, network, panel){
   return tr
 }
 
+function showAddUserModal(){
+  const overlay = el('div', { class: 'warning-modal-overlay' })
+  const modal = el('div', { class: 'warning-modal confirm-modal user-add-modal' })
+  modal.onclick = (e) => e.stopPropagation()
+
+  const addForm = el('div', { class: 'user-add-form' })
+  const userInput = el('input', {
+    type: 'text',
+    placeholder: 'Username',
+    autocomplete: 'username'
+  })
+  const passInput = el('input', {
+    type: 'password',
+    placeholder: 'Password',
+    autocomplete: 'new-password'
+  })
+  const roleSelect = el('select')
+  roleSelect.appendChild(el('option', { value: '' }, 'reader'))
+  roleSelect.appendChild(el('option', { value: 'editor' }, 'editor'))
+  roleSelect.appendChild(el('option', { value: 'creator' }, 'creator'))
+  roleSelect.appendChild(el('option', { value: 'administrator' }, 'administrator'))
+
+  const createBtn = el('button', { class: 'primary' }, 'Add User')
+  const cancelBtn = el('button', { class: 'confirm-cancel' }, 'Cancel')
+  const closeModal = () => overlay.remove()
+  cancelBtn.onclick = closeModal
+  overlay.onclick = closeModal
+
+  createBtn.onclick = async () => {
+    const username = userInput.value.trim()
+    if (!username || !passInput.value.trim()) {
+      pushToast('Username and password required', 'error')
+      const requiredInput = username ? passInput : userInput
+      requiredInput.focus()
+      return
+    }
+
+    createBtn.disabled = true
+    try {
+      const roles = roleSelect.value ? [roleSelect.value] : []
+      await api.createUser(username, passInput.value, roles)
+      closeModal()
+      pushToast('User created', 'info')
+      store.set({})
+    } catch(e) {
+      pushToast('Failed: ' + e.message, 'error')
+    } finally {
+      createBtn.disabled = false
+    }
+  }
+
+  const handleKeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      createBtn.click()
+    } else if (e.key === 'Escape') {
+      closeModal()
+    }
+  }
+  userInput.onkeydown = handleKeydown
+  passInput.onkeydown = handleKeydown
+  roleSelect.onkeydown = handleKeydown
+
+  addForm.appendChild(userInput)
+  addForm.appendChild(passInput)
+  addForm.appendChild(roleSelect)
+  modal.appendChild(el('div', { class: 'confirm-text' }, 'Add User'))
+  modal.appendChild(addForm)
+  modal.appendChild(el('div', { class: 'confirm-buttons' }, cancelBtn, createBtn))
+  overlay.appendChild(modal)
+  document.body.appendChild(overlay)
+  userInput.focus()
+}
+
 function UsersPage(){
   const card = el('div', { class: 'card' })
 
@@ -1425,41 +1499,12 @@ function UsersPage(){
 
   if (isAdmin()) {
     // Admin view: full user management
-    card.appendChild(el('h2', {}, 'User Management'))
-    // Add user form
-    const addForm = el('div', { class: 'user-form' })
-    const userInput = el('input', { type: 'text', placeholder: 'Username' })
-    const passInput = el('input', { type: 'password', placeholder: 'Password' })
-    const roleSelect = el('select')
-    roleSelect.appendChild(el('option', { value: '' }, 'reader'))
-    roleSelect.appendChild(el('option', { value: 'editor' }, 'editor'))
-    roleSelect.appendChild(el('option', { value: 'creator' }, 'creator'))
-    roleSelect.appendChild(el('option', { value: 'administrator' }, 'administrator'))
-    const addBtn = el('button', { class: 'primary' }, 'Add User')
-
-    addBtn.onclick = async () => {
-      if (!userInput.value.trim() || !passInput.value.trim()) {
-        pushToast('Username and password required', 'error')
-        return
-      }
-      try {
-        const roles = roleSelect.value ? [roleSelect.value] : []
-        await api.createUser(userInput.value.trim(), passInput.value, roles)
-        userInput.value = ''
-        passInput.value = ''
-        roleSelect.value = ''
-        pushToast('User created', 'info')
-        store.set({})
-      } catch(e) {
-        pushToast('Failed: ' + e.message, 'error')
-      }
-    }
-
-    addForm.appendChild(userInput)
-    addForm.appendChild(passInput)
-    addForm.appendChild(roleSelect)
-    addForm.appendChild(addBtn)
-    card.appendChild(addForm)
+    const heading = el('div', { class: 'user-heading' })
+    heading.appendChild(el('h2', {}, 'User Management'))
+    const addBtn = el('button', { class: 'primary user-add-btn' }, 'Add User')
+    addBtn.onclick = showAddUserModal
+    heading.appendChild(addBtn)
+    card.appendChild(heading)
 
     // Users list
     const container = el('div', { class: 'users-list' })
