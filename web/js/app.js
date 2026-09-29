@@ -101,9 +101,15 @@ mountApp(root)
           // Skip if suppressed (recent user action) or search active
           const searchActive = window.searchState && window.searchState.matches && window.searchState.matches.length > 0
           const editing = document.activeElement?.matches('input, textarea, select') || document.querySelector('.warning-modal-overlay')
-          const suppressed = Date.now() < suppressRefreshUntil || editing
-          
-          if (shouldRefresh && !searchActive && !suppressed) {
+          const userChangeSuppressed = Date.now() < suppressRefreshUntil
+
+          if (shouldRefresh && userChangeSuppressed && !searchActive && !editing) {
+            // A successful local mutation has already updated the visible UI/store.
+            // Consume its change marker instead of rebuilding the entire network tree
+            // on the next poll, which can collapse asynchronously loaded branches and
+            // disturb the current scroll position.
+            changes.acknowledge(data.last_change)
+          } else if (shouldRefresh && !searchActive && !editing) {
             try {
               const list = await api.networks()
               const newNetworks = Array.isArray(list) ? list : []
