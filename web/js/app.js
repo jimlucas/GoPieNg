@@ -65,10 +65,26 @@ mountApp(root)
   const changes = new ChangeTracker()
   let checkingNetwork = false
   
-  // Call this after user-initiated changes to prevent auto-refresh from re-rendering
+  // Call this after a successful user-initiated mutation. Read back the
+  // server's change marker and acknowledge that exact version so the normal
+  // poll does not rebuild the tree a few seconds later.
   let suppressRefreshUntil = 0
-  window.syncLastChange = () => {
-    suppressRefreshUntil = Date.now() + 3000
+  window.syncLastChange = async () => {
+    suppressRefreshUntil = Date.now() + 10000
+    try {
+      const r = await fetch('/api/pieng/ping', {
+        method: 'GET',
+        cache: 'no-store'
+      })
+      if (r.ok) {
+        const data = await r.json()
+        changes.acknowledge(data.last_change)
+      }
+    } catch(e) {
+      // Leave the normal poll to reconcile the data if synchronization fails.
+    } finally {
+      suppressRefreshUntil = Date.now() + 1000
+    }
   }
   window.addEventListener('pieng:unauthorized', () => {
     store.set({ user: null, networks: [] })
