@@ -180,7 +180,11 @@ func TestAPIPointToPointAndIPv6(t *testing.T) {
 		t.Fatal("IPv6 audit prefix must be /128")
 	}
 	f.do(t, "POST", "/networks/23/allocate-subnet", f.creator, `{"mask":64}`, 200)
-	f.do(t, "GET", "/networks/23/available-subnets?mask=64", f.creator, "", 422)
+	// A /32 split into /64s is listed one page at a time, never materialized.
+	w := f.do(t, "GET", "/networks/23/available-subnets?mask=64", f.creator, "", 200)
+	if w.Header().Get("X-Pieng-Total") != "4294967295" || w.Header().Get("X-Pieng-Next") == "" {
+		t.Fatalf("IPv6 page headers: total=%q next=%q", w.Header().Get("X-Pieng-Total"), w.Header().Get("X-Pieng-Next"))
+	}
 }
 
 func TestAPIAllocationPolicy(t *testing.T) {
@@ -406,4 +410,155 @@ func TestAPIProbeValidationAndIPv6(t *testing.T) {
 	if w.Code != 403 {
 		t.Fatal(w.Code)
 	}
+}
+
+func TestAPINetworkCreateResizeDelete(t *testing.T) {
+	f := newFixture(t)
+
+	// Top-level creation: administrator only, canonical, non-overlapping and
+	// never around an existing (even misplaced legacy) host.
+	f.do(t, "POST", "/networks", f.creator, `{"cidr":"10.9.0.0/16"}`, 403)
+	f.do(t, "POST", "/networks", f.admin, `{"cidr":"10.9.0.1/16"}`, 400)
+	f.do(t, "POST", "/networks", f.admin, `{"cidr":"10.0.0.0/8"}`, 409)
+	f.exec(t, `INSERT INTO hosts(address,network,description) VALUES('10.8.0.7',2,'legacy misplaced')`)
+	f.do(t, "POST", "/networks", f.admin, `{"cidr":"10.8.0.0/24"}`, 409)
+	f.do(t, "POST", "/networks", f.admin, `{"cidr":"10.9.0.0/24","subdivide":false}`, 200)
+	if f.count(t, `SELECT COUNT(*) FROM networks WHERE address_range='10.9.0.0/24' AND parent IS NULL`) != 1 {
+		t.Fatal("top-level network not created")
+	}
+
+	// Resize: administrator only, no relocation, children and hosts retained.
+	f.exec(t, `INSERT INTO networks(id,address_range,subdivide,description) VALUES(30,'10.50.0.0/24',false,'resizable')`)
+	f.do(t, "PATCH", "/networks/30", f.editor, `{"address_range":"10.50.0.0/23"}`, 403)
+	f.do(t, "PATCH", "/networks/30", f.admin, `{"address_range":"10.60.0.0/24"}`, 409)
+	f.do(t, "PATCH", "/networks/30", f.admin, `{"address_range":"10.50.0.0/23"}`, 200)
+	f.do(t, "POST", "/networks/30/hosts", f.editor, `{"address":"10.50.1.9"}`, 200)
+	f.do(t, "PATCH", "/networks/30", f.admin, `{"address_range":"10.50.0.0/24"}`, 409) // would orphan 10.50.1.9
+	f.do(t, "PATCH", "/networks/2", f.admin, `{"address_range":"10.0.0.0/23"}`, 409)   // overlaps sibling 3
+
+	// Expansion must not absorb a misplaced legacy host sitting in the newly
+	// added space: hosts.network points elsewhere, but the address is taken.
+	f.exec(t, `INSERT INTO networks(id,address_range,subdivide,description) VALUES(31,'10.70.0.0/24',false,'grows')`)
+	f.exec(t, `INSERT INTO hosts(address,network,description) VALUES('10.70.1.7',2,'legacy misplaced')`)
+	f.do(t, "PATCH", "/networks/31", f.admin, `{"address_range":"10.70.0.0/23"}`, 409)
+	if f.count(t, `SELECT COUNT(*) FROM networks WHERE id=31 AND address_range='10.70.0.0/24'`) != 1 {
+		t.Fatal("resize absorbed a misplaced legacy host")
+	}
+
+	// Delete: creators remove empty child allocations; top-level needs an
+	// administrator; allocations holding hosts or children are refused.
+	f.do(t, "DELETE", "/networks/30", f.creator, "", 403)
+	f.do(t, "DELETE", "/networks/1", f.admin, "", 409)
+	f.do(t, "POST", "/networks/2/hosts", f.editor, `{"address":"10.0.0.4"}`, 200)
+	f.do(t, "DELETE", "/networks/2", f.creator, "", 409)
+	f.do(t, "DELETE", "/networks/3", f.creator, "", 200)
+
+	// A child whose own FK has no hosts, but whose address space holds a
+	// misplaced legacy host, must not be released back to the parent.
+	f.exec(t, `INSERT INTO networks(id,parent,address_range,subdivide,description) VALUES(40,1,'10.0.2.0/24',false,'returned')`)
+	f.exec(t, `INSERT INTO hosts(address,network,description) VALUES('10.0.2.9',2,'legacy misplaced')`)
+	f.do(t, "DELETE", "/networks/40", f.creator, "", 409)
+	if f.count(t, `SELECT COUNT(*) FROM networks WHERE id=40`) != 1 {
+		t.Fatal("delete released space holding a misplaced legacy host")
+	}
+}
+
+// Each successful mutation reports exactly the changelog IDs it created, so
+// the UI can acknowledge its own changes without consuming anyone else's.
+func TestAPIMutationReportsItsChangeIDs(t *testing.T) {
+	f := newFixture(t)
+	f.exec(t, `INSERT INTO changelog(prefix, change) VALUES('10.0.0.0/16','earlier change by someone else')`)
+	w := f.do(t, "PATCH", "/networks/2", f.editor, `{"description":"renamed"}`, 200)
+	var want int64
+	if err := f.db.QueryRow(`SELECT MAX(id) FROM changelog`).Scan(&want); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.Header().Get("X-Pieng-Change"); got != fmt.Sprint(want) {
+		t.Fatalf("X-Pieng-Change = %q, want %d", got, want)
+	}
+	if got := f.do(t, "PATCH", "/networks/2", f.editor, `{}`, 200).Header().Get("X-Pieng-Change"); got != "" {
+		t.Fatalf("no-op reported change %q", got)
+	}
+	if got := f.do(t, "PATCH", "/networks/2", f.editor, `{"valid_masks":[25]}`, 403).Header().Get("X-Pieng-Change"); got != "" {
+		t.Fatalf("failed mutation reported change %q", got)
+	}
+}
+
+// Roots must serialize parent as JSON null, not 0: the UI decides whether a
+// row is a child allocation (removable by creators) from this field.
+func TestAPIRootParentIsNull(t *testing.T) {
+	f := newFixture(t)
+	var list []map[string]any
+	if err := json.Unmarshal(f.do(t, "GET", "/networks", f.reader, "", 200).Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	parents := map[float64]any{}
+	for _, n := range list {
+		parents[n["id"].(float64)] = n["parent"]
+	}
+	if p, ok := parents[1]; !ok || p != nil {
+		t.Fatalf("root parent = %#v, want null", p)
+	}
+	var children []map[string]any
+	if err := json.Unmarshal(f.do(t, "GET", "/networks?parent_id=1", f.reader, "", 200).Body.Bytes(), &children); err != nil {
+		t.Fatal(err)
+	}
+	if len(children) == 0 || children[0]["parent"] != float64(1) {
+		t.Fatalf("child parent = %#v, want 1", children)
+	}
+	var one struct {
+		Network map[string]any `json:"network"`
+	}
+	if err := json.Unmarshal(f.do(t, "GET", "/networks/1", f.reader, "", 200).Body.Bytes(), &one); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := one.Network["parent"]; !ok || p != nil {
+		t.Fatalf("GET /networks/1 parent = %#v, want null", p)
+	}
+}
+
+func TestAPIAvailableSubnetsPaginate(t *testing.T) {
+	f := newFixture(t)
+	// 10.0.0.0/16 holds 10.0.0.0/24 and 10.0.1.0/24: 254 free /24s remain.
+	type block struct {
+		AddressRange string `json:"address_range"`
+	}
+	seen := map[string]bool{}
+	after := ""
+	for pages := 0; ; pages++ {
+		path := "/networks/1/available-subnets?mask=24&limit=100"
+		if after != "" {
+			path += "&after=" + url.QueryEscape(after)
+		}
+		w := f.do(t, "GET", path, f.creator, "", 200)
+		if w.Header().Get("X-Pieng-Total") != "254" {
+			t.Fatalf("total %q, want 254", w.Header().Get("X-Pieng-Total"))
+		}
+		var page []block
+		if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		if len(page) > 100 {
+			t.Fatalf("page of %d exceeds limit", len(page))
+		}
+		for _, b := range page {
+			if seen[b.AddressRange] || b.AddressRange == "10.0.0.0/24" || b.AddressRange == "10.0.1.0/24" {
+				t.Fatalf("duplicate or allocated block %s", b.AddressRange)
+			}
+			seen[b.AddressRange] = true
+		}
+		after = w.Header().Get("X-Pieng-Next")
+		if after == "" {
+			break
+		}
+		if pages > 5 {
+			t.Fatal("pagination did not terminate")
+		}
+	}
+	if len(seen) != 254 {
+		t.Fatalf("listed %d blocks, want 254", len(seen))
+	}
+	f.do(t, "GET", "/networks/1/available-subnets?mask=24&limit=0", f.creator, "", 400)
+	f.do(t, "GET", "/networks/1/available-subnets?mask=24&limit=5000", f.creator, "", 400)
+	f.do(t, "GET", "/networks/1/available-subnets?mask=24&after=192.168.0.0/24", f.creator, "", 400)
 }

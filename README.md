@@ -32,7 +32,7 @@ export PIENG_JWT_SECRET='your-secret-key-at-least-32-characters'
 go build -o bin/pieng ./cmd/server
 
 # Run as FastCGI (default) - for use behind nginx/httpd
-./bin/pieng -socket /var/www/run/pieng.sock
+./bin/pieng -socket /var/www/run/gopieng.sock
 
 # Or run as standalone HTTP server for development
 ./bin/pieng -web
@@ -50,7 +50,7 @@ For integration with nginx, httpd, or other web servers:
 
 ```bash
 # Unix socket (recommended)
-./bin/pieng -socket /var/www/run/pieng.sock
+./bin/pieng -socket /var/www/run/gopieng.sock
 
 # TCP socket
 ./bin/pieng -addr 127.0.0.1:9000
@@ -72,14 +72,14 @@ PIENG_ADDR=:8080 ./bin/pieng -web     # Via environment
 Disable static file serving when using a separate web server for assets:
 
 ```bash
-./bin/pieng -no-static -socket /var/www/run/pieng.sock
+./bin/pieng -no-static -socket /var/www/run/gopieng.sock
 ```
 
 ## nginx Configuration Example
 
 ```nginx
 upstream pieng {
-    server unix:/var/www/run/pieng.sock;
+    server unix:/var/www/run/gopieng.sock;
 }
 
 server {
@@ -88,13 +88,12 @@ server {
     
     root /var/www/pieng/web;
     
-    # Static files served by nginx
-    location /css/ {
-        expires 1h;
-    }
-    
-    location /js/ {
-        expires 1h;
+    # Static files are served from root. /js/ and /css/ need no cache
+    # headers: every release versions the whole module graph (?v=N), so new
+    # releases load new URLs. index.html carries that version, so it alone
+    # must be revalidated.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
     }
     
     # API via FastCGI
@@ -119,7 +118,8 @@ server "ipam.example.com" {
     root "/var/www/pieng/web"
     
     location "/api/pieng/*" {
-        fastcgi socket "/var/www/run/pieng.sock"
+        # httpd(8) is chrooted to /var/www: this is /var/www/run/gopieng.sock
+        fastcgi socket "/run/gopieng.sock"
     }
     
     location "/*.css" {
@@ -135,6 +135,11 @@ server "ipam.example.com" {
     }
 }
 ```
+
+OpenBSD `httpd(8)` cannot set `Cache-Control`. Each release versions the entry
+assets and every module import (`?v=N`), so cached modules are never reused
+across releases; only `index.html` may be heuristically cached, so reload once
+after an upgrade if the old frontend is still shown.
 
 ## Security
 
@@ -295,6 +300,9 @@ The default API base path is `/api/pieng`.
 - `POST /api/pieng/networks/{id}/allocate-subnet` - Allocate a child subnet (creator+; body: `{mask, description}` or `{cidr, description, subdivide}`)
 
 CIDR changes resize an existing network; they do not relocate it to an unrelated address range. Existing overlap, containment, child, host, and allocation-mask checks still apply.
+Resizing may not absorb an existing host allocation, and removing a network is refused while any host address falls inside it, including legacy hosts whose `hosts.network` points elsewhere.
+
+Successful mutations return the changelog IDs they created in the `X-Pieng-Change` response header (comma-separated). Clients should acknowledge only those IDs and refresh on any other change reported by `GET /api/pieng/ping`.
 
 ### Hosts
 - `GET /api/pieng/networks/{id}/hosts` - List hosts in network
@@ -314,15 +322,27 @@ CIDR changes resize an existing network; they do not relocate it to an unrelated
 
 ## UI Usage
 
-### Network Tree
-- Click the arrow to expand a network and see children
-- Click open/close button to toggle expansion
-- Click description text to edit inline
-- Click owner field to edit inline
-- Press Enter to save, Escape to cancel
+The interface follows [DESIGN_LANGUAGE.md](DESIGN_LANGUAGE.md): navigation in
+the left sidebar (collapsible; a drawer on phones), search in the toolbar above
+the network tree.
 
-### Configuring Allocation Sizes (Administrator)
-- Click the gear icon on any subdividable network
+### Network Tree
+- Click the chevron, or the yellow `open` / blue `hosts` control, to expand a network
+- Click (or focus and press Enter on) a description, owner or account to edit it inline
+- Press Enter to save, Escape to cancel
+- Administrators add top-level networks with `Add network` in the toolbar
+- Administrators resize a network by clicking its prefix, typing the new CIDR
+  and pressing Enter (a confirmation follows)
+- Creators remove an empty subnet allocation with the trash icon on its row
+
+### Searching
+- Type in the toolbar search and pick `Hosts` or `Networks`
+- Enter or ↓ jumps to the next match, Shift+Enter or ↑ to the previous one
+- Escape clears the search
+
+### Network Settings (Administrator)
+- Click the sliders icon on any network
+- Check "Allow this network to be subdivided" to turn a leaf into a parent
 - Check which sizes should be allowed
 - Use "Common" to select /+1 through /+4
 - Click Save
@@ -330,23 +350,26 @@ CIDR changes resize an existing network; they do not relocate it to an unrelated
 ### Allocating Subnets
 - Expand a subdivide network
 - Enter description (optional)
-- Click a size button:
-  - Green buttons = recommended (larger blocks)
-  - Gray buttons = smaller blocks (use sparingly)
+- Pick a size: green labels are recommended (larger blocks), gray ones are
+  smaller blocks (use sparingly)
+- Click `Assign next`, or open `Available` to choose a specific prefix and
+  `Assign` it (leaf) or `Subdivide` it
 
 ### Managing Hosts
-- Click "hosts" on a leaf network
+- Click `hosts` on a leaf network
 - Enter IP (or leave blank for auto) and description
 - Click Add
+- `All addresses` lists every address in the network for bulk editing
 - Click description to edit
 - Click del to delete
 
-### User Management (Administrator)
-- Go to Users tab (visible only to administrators)
-- Add new users with username/password/role
-- Change user roles via dropdown (administrator/creator/editor/reader)
-- Enable/disable users
-- Delete users
+### Users and Account
+- Administrators see `Users`: add users with username/password/role, change
+  roles via dropdown (administrator/creator/editor/reader), reset another
+  user's password with `password`, enable/disable or delete users, and change
+  their own password under `Your password`
+- Everyone else sees `Account`, where they can change their password
+- Recent changes are listed under `Activity`
 
 ## Development
 
