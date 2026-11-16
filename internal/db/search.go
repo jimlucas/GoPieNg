@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net"
 )
 
 func searchHandler(db *sql.DB) http.HandlerFunc {
@@ -60,6 +61,41 @@ func searchHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			respondError(w, err)
 			return
+		}
+		// When a network text search has no matches, resolve an exact IP to
+		// any containing network definitions (most specific prefix first).
+		// PostgreSQL's inet containment operators handle both IPv4 and IPv6.
+		if mode == "networks" && len(results) == 0 {
+			if ip := net.ParseIP(q); ip != nil {
+				parentRows, queryErr := db.QueryContext(r.Context(), `
+					SELECT id,address_range::text,description,owner,account
+					FROM networks
+					WHERE address_range >>= $1::inet
+					ORDER BY masklen(address_range) DESC, address_range
+					LIMIT 100`, ip.String())
+				if queryErr != nil {
+					respondError(w, queryErr)
+					return
+				}
+				for parentRows.Next() {
+					var id int64
+					var address string
+					var desc, owner, account sql.NullString
+					if scanErr := parentRows.Scan(&id, &address, &desc, &owner, &account); scanErr != nil {
+						parentRows.Close()
+						respondError(w, scanErr)
+						return
+					}
+					results = append(results, map[string]any{"type": "network", "id": id, "address_range": address, "description": desc.String, "owner": owner.String, "account": account.String})
+					ids = append(ids, id)
+				}
+				if rowsErr := parentRows.Err(); rowsErr != nil {
+					parentRows.Close()
+					respondError(w, rowsErr)
+					return
+				}
+				parentRows.Close()
+			}
 		}
 		cache := map[int64][]int64{}
 		for i, id := range ids {
